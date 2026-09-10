@@ -1087,6 +1087,23 @@ function calcSettlements(summary) {
     if (debtors[i].amount < 1) i++;
     if (creditors[j].amount < 1) j++;
   }
+
+  // Peer-to-peer transfers can only cover money that some debtor is actually
+  // holding. Any leftover credit (paid > owed with no debtor left to match it)
+  // is money still sitting in the public wallet (公帳) — it comes back to that
+  // person directly from 公帳, not from another traveler. Symmetrically, any
+  // leftover debt after creditors run out means 公帳 spent more than it ever
+  // collected, so those people need to top 公帳 back up.
+  for (; j < creditors.length; j++) {
+    if (creditors[j].amount > 1) {
+      settlements.push({ from: '公帳', to: creditors[j].name, amount: creditors[j].amount, amountBase: creditors[j].amountBase });
+    }
+  }
+  for (; i < debtors.length; i++) {
+    if (debtors[i].amount > 1) {
+      settlements.push({ from: debtors[i].name, to: '公帳', amount: debtors[i].amount, amountBase: debtors[i].amountBase });
+    }
+  }
   return settlements;
 }
 
