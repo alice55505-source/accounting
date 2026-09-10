@@ -644,6 +644,12 @@ function renderSplitChips() {
   `).join('');
 }
 
+function manualSplitUsesForeign() {
+  const cur = document.getElementById('expCurrency').value;
+  const actualTWD = payMethod === 'Credit Card' ? (parseFloat(document.getElementById('expActualTWD').value) || 0) : 0;
+  return cur !== 'TWD' && !(actualTWD > 0);
+}
+
 function renderManualSplitFields() {
   const container = document.getElementById('manualSplitFields');
   if (splitMode !== 'manual' || selectedSplitUsers.size === 0) {
@@ -651,18 +657,23 @@ function renderManualSplitFields() {
     return;
   }
   container.classList.remove('hidden');
-  const total = calcTotal();
-  const perPerson = selectedSplitUsers.size > 0 ? Math.round(total / selectedSplitUsers.size) : 0;
+  const useForeign = manualSplitUsesForeign();
+  const cur = document.getElementById('expCurrency').value;
+  const unitLabel = useForeign ? CURRENCIES[cur].symbol : 'NT$';
+  const total = useForeign ? calcSubtotalOnly() : calcTotal();
+  const perPerson = selectedSplitUsers.size > 0
+    ? (useForeign ? Math.round((total / selectedSplitUsers.size) * 100) / 100 : Math.round(total / selectedSplitUsers.size))
+    : 0;
   container.innerHTML = [...selectedSplitUsers].map(uid => {
     const user = users.find(u => u.id === uid);
     if (!user) return '';
     return `
       <div class="flex items-center gap-2">
         <span class="text-xs font-bold text-slate-600 w-16 truncate">${user.name}</span>
-        <input type="number" id="manual_${uid}" placeholder="${perPerson}" value="${perPerson}" 
+        <input type="number" id="manual_${uid}" placeholder="${perPerson}" value="${perPerson}"
           class="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold"
           oninput="updateManualTotal()">
-        <span class="text-xs text-slate-400 font-bold">NT$</span>
+        <span class="text-xs text-slate-400 font-bold">${unitLabel}</span>
       </div>
     `;
   }).join('');
@@ -783,8 +794,10 @@ function submitExpense() {
     const each = totalTWD / splitList.length;
     splitList.forEach(uid => splitAmounts[uid] = each);
   } else {
+    const useForeign = manualSplitUsesForeign();
     splitList.forEach(uid => {
-      splitAmounts[uid] = parseFloat(document.getElementById('manual_' + uid)?.value) || 0;
+      const raw = parseFloat(document.getElementById('manual_' + uid)?.value) || 0;
+      splitAmounts[uid] = useForeign ? raw * rate : raw;
     });
   }
 
