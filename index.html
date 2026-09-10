@@ -803,9 +803,16 @@ function submitExpense() {
     splitList.forEach(uid => splitAmounts[uid] = each);
   } else {
     const useForeign = manualSplitUsesForeign();
-    splitList.forEach(uid => {
-      const raw = parseFloat(document.getElementById('manual_' + uid)?.value) || 0;
-      splitAmounts[uid] = useForeign ? raw * rate : raw;
+    const rawValues = splitList.map(uid => parseFloat(document.getElementById('manual_' + uid)?.value) || 0);
+    const rawSum = rawValues.reduce((s, v) => s + v, 0);
+    const expectedTotal = useForeign ? calcSubtotalOnly() : totalTWD;
+    const unitLabel = useForeign ? CURRENCIES[cur].symbol : 'NT$';
+    const tolerance = useForeign ? 0.01 : 1;
+    if (Math.abs(rawSum - expectedTotal) > tolerance) {
+      return alert(`分攤金額加總（${unitLabel}${rawSum.toLocaleString(undefined, { maximumFractionDigits: 2 })}）與總金額（${unitLabel}${expectedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}）不同，請調整後再送出！`);
+    }
+    splitList.forEach((uid, idx) => {
+      splitAmounts[uid] = useForeign ? rawValues[idx] * rate : rawValues[idx];
     });
   }
 
