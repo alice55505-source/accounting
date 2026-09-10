@@ -1110,10 +1110,15 @@ function openExpenseModal(id) {
         <div class="space-y-1.5">
           ${Object.entries(exp.splitAmounts).map(([uid, amt]) => {
             const u = users.find(u => u.id === uid);
+            const showForeign = exp.currency !== 'TWD' && !exp.actualChargedTWD;
+            const foreignAmt = showForeign ? amt / exp.exchangeRate : 0;
             return `
               <div class="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-xl">
                 <span class="text-sm font-bold text-slate-700">${u?.name || '?'}</span>
-                <span class="text-sm font-black text-slate-800">NT$ ${Math.round(amt).toLocaleString()}</span>
+                <div class="flex items-center gap-2">
+                  ${showForeign ? `<span class="text-sm font-black text-slate-800">${cur.symbol}${foreignAmt.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>` : ''}
+                  <span class="text-sm font-black text-slate-800">NT$ ${Math.round(amt).toLocaleString()}</span>
+                </div>
               </div>`;
           }).join('')}
         </div>
