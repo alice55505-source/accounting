@@ -433,6 +433,35 @@ function toBaseAmount(twd) {
 function fmtBaseAmount(twd) {
   return CURRENCIES[baseCurrency].symbol + Math.round(toBaseAmount(twd)).toLocaleString();
 }
+function fmtInBase(val) {
+  return CURRENCIES[baseCurrency].symbol + Math.round(val).toLocaleString();
+}
+
+// Convert an expense's own "paid" amount into baseCurrency. When the expense was
+// actually entered in baseCurrency (and wasn't overridden by an actual-charged-TWD
+// credit card amount), reuse the exact amount the user typed instead of round-tripping
+// through TWD with the generic table rate — that generic rate can differ from the
+// specific rate the user entered for this expense, which is why it wouldn't match.
+function expenseAmountInBase(exp) {
+  if (baseCurrency === 'TWD') return exp.totalTWD;
+  if (exp.currency === baseCurrency && !exp.actualChargedTWD) return exp.totalAmount;
+  return exp.totalTWD / CURRENCIES[baseCurrency].rate;
+}
+
+// Same idea for one person's split share of an expense: reconstruct it using the
+// expense's own exchange rate (exact) rather than the generic table rate (approximate).
+function splitAmountInBase(exp, twdAmt) {
+  if (baseCurrency === 'TWD') return twdAmt;
+  if (exp.currency === baseCurrency && !exp.actualChargedTWD && exp.exchangeRate) return twdAmt / exp.exchangeRate;
+  return twdAmt / CURRENCIES[baseCurrency].rate;
+}
+
+function depositAmountInBase(dep) {
+  const dCur = dep.currency || 'TWD';
+  if (baseCurrency === 'TWD') return dep.amountTWD;
+  if (dCur === baseCurrency) return dep.amount ?? dep.amountTWD;
+  return dep.amountTWD / CURRENCIES[baseCurrency].rate;
+}
 
 function onBaseCurrencyChange() {
   baseCurrency = document.getElementById('baseCurrencySelect').value;
@@ -927,20 +956,30 @@ function payerName(exp) {
 function calcSummary() {
   const summary = {};
   users.forEach(u => {
-    summary[u.id] = { user: u, paid: 0, shouldPay: 0 };
+    summary[u.id] = { user: u, paid: 0, shouldPay: 0, paidBase: 0, shouldPayBase: 0 };
   });
   expenses.forEach(exp => {
-    if (summary[exp.paidBy]) summary[exp.paidBy].paid += exp.totalTWD;
+    if (summary[exp.paidBy]) {
+      summary[exp.paidBy].paid += exp.totalTWD;
+      summary[exp.paidBy].paidBase += expenseAmountInBase(exp);
+    }
     Object.entries(exp.splitAmounts).forEach(([uid, amt]) => {
-      if (summary[uid]) summary[uid].shouldPay += amt;
+      if (summary[uid]) {
+        summary[uid].shouldPay += amt;
+        summary[uid].shouldPayBase += splitAmountInBase(exp, amt);
+      }
     });
   });
   deposits.forEach(dep => {
-    if (summary[dep.userId]) summary[dep.userId].paid += dep.amountTWD;
+    if (summary[dep.userId]) {
+      summary[dep.userId].paid += dep.amountTWD;
+      summary[dep.userId].paidBase += depositAmountInBase(dep);
+    }
   });
   return Object.values(summary).map(s => ({
     ...s,
-    balance: s.paid - s.shouldPay
+    balance: s.paid - s.shouldPay,
+    balanceBase: s.paidBase - s.shouldPayBase
   }));
 }
 
@@ -948,39 +987,44 @@ function renderSummaryCards() {
   const container = document.getElementById('summaryCards');
   if (users.length === 0) { container.innerHTML = ''; return; }
   const summary = calcSummary();
-  const totalSpend = expenses.reduce((s, e) => s + e.totalTWD, 0);
-  const totalDeposits = deposits.reduce((s, d) => s + d.amountTWD, 0);
-  const publicPaidSpend = expenses.filter(e => e.paidBy === 'PUBLIC').reduce((s, e) => s + e.totalTWD, 0);
-  const publicBalance = totalDeposits - publicPaidSpend;
+  const totalSpendTWD = expenses.reduce((s, e) => s + e.totalTWD, 0);
+  const totalSpendBase = expenses.reduce((s, e) => s + expenseAmountInBase(e), 0);
+  const totalDepositsTWD = deposits.reduce((s, d) => s + d.amountTWD, 0);
+  const totalDepositsBase = deposits.reduce((s, d) => s + depositAmountInBase(d), 0);
+  const publicExpenses = expenses.filter(e => e.paidBy === 'PUBLIC');
+  const publicPaidTWD = publicExpenses.reduce((s, e) => s + e.totalTWD, 0);
+  const publicPaidBase = publicExpenses.reduce((s, e) => s + expenseAmountInBase(e), 0);
+  const publicBalanceTWD = totalDepositsTWD - publicPaidTWD;
+  const publicBalanceBase = totalDepositsBase - publicPaidBase;
   const showTWD = baseCurrency !== 'TWD';
 
   container.innerHTML = `
     <div class="col-span-2 bg-indigo-600 rounded-2xl p-4 text-white">
       <div class="text-xs font-bold opacity-70 mb-1">總支出</div>
       <div class="flex items-baseline gap-3 flex-wrap">
-        <div class="text-2xl font-black">${fmtBaseAmount(totalSpend)}</div>
-        ${showTWD ? `<div class="text-2xl font-black">NT$ ${Math.round(totalSpend).toLocaleString()}</div>` : ''}
+        <div class="text-2xl font-black">${fmtInBase(totalSpendBase)}</div>
+        ${showTWD ? `<div class="text-2xl font-black">NT$ ${Math.round(totalSpendTWD).toLocaleString()}</div>` : ''}
       </div>
       <div class="text-xs opacity-60 mt-1">${expenses.length} 筆紀錄</div>
     </div>
     <div class="col-span-2 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
       <div class="text-xs font-black text-slate-400 mb-1">公帳餘額</div>
       <div class="flex items-baseline gap-3 flex-wrap">
-        <div class="text-xl font-black ${publicBalance >= 0 ? 'text-emerald-600' : 'text-rose-500'}">${fmtBaseAmount(publicBalance)}</div>
-        ${showTWD ? `<div class="text-xl font-black ${publicBalance >= 0 ? 'text-emerald-600' : 'text-rose-500'}">NT$ ${Math.round(publicBalance).toLocaleString()}</div>` : ''}
+        <div class="text-xl font-black ${publicBalanceBase >= 0 ? 'text-emerald-600' : 'text-rose-500'}">${fmtInBase(publicBalanceBase)}</div>
+        ${showTWD ? `<div class="text-xl font-black ${publicBalanceBase >= 0 ? 'text-emerald-600' : 'text-rose-500'}">NT$ ${Math.round(publicBalanceTWD).toLocaleString()}</div>` : ''}
       </div>
-      <div class="text-[10px] text-slate-400 mt-1">預繳 ${fmtBaseAmount(totalDeposits)} − 公帳直接支出 ${fmtBaseAmount(publicPaidSpend)}</div>
+      <div class="text-[10px] text-slate-400 mt-1">預繳 ${fmtInBase(totalDepositsBase)} − 公帳直接支出 ${fmtInBase(publicPaidBase)}</div>
     </div>
     ${summary.map(s => `
       <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
         <div class="text-xs font-black text-slate-400 mb-1 truncate">${s.user.name}</div>
         <div class="flex items-baseline gap-2 flex-wrap">
-          <div class="text-base font-black ${s.balance >= 0 ? 'text-emerald-600' : 'text-rose-500'}">
-            ${s.balance >= 0 ? '+' : ''}${fmtBaseAmount(s.balance)}
+          <div class="text-base font-black ${s.balanceBase >= 0 ? 'text-emerald-600' : 'text-rose-500'}">
+            ${s.balanceBase >= 0 ? '+' : ''}${fmtInBase(s.balanceBase)}
           </div>
-          ${showTWD ? `<div class="text-base font-black ${s.balance >= 0 ? 'text-emerald-600' : 'text-rose-500'}">${s.balance >= 0 ? '+' : ''}NT$ ${Math.round(s.balance).toLocaleString()}</div>` : ''}
+          ${showTWD ? `<div class="text-base font-black ${s.balanceBase >= 0 ? 'text-emerald-600' : 'text-rose-500'}">${s.balanceBase >= 0 ? '+' : ''}NT$ ${Math.round(s.balance).toLocaleString()}</div>` : ''}
         </div>
-        <div class="text-[10px] text-slate-400 mt-1">付 ${fmtBaseAmount(s.paid)} | 應付 ${fmtBaseAmount(s.shouldPay)}</div>
+        <div class="text-[10px] text-slate-400 mt-1">付 ${fmtInBase(s.paidBase)} | 應付 ${fmtInBase(s.shouldPayBase)}</div>
       </div>
     `).join('')}
   `;
