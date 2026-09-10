@@ -392,13 +392,13 @@
 <script>
 // ===== DATA =====
 const CURRENCIES = {
-  TWD: { symbol: 'NT$', name: '台幣', rate: 1 },
-  JPY: { symbol: '¥', name: '日圓', rate: 0.21 },
-  USD: { symbol: '$', name: '美金', rate: 32.5 },
-  EUR: { symbol: '€', name: '歐元', rate: 35.2 },
-  HKD: { symbol: 'HK$', name: '港幣', rate: 4.15 },
-  CNY: { symbol: '¥', name: '人民幣', rate: 4.45 },
-  KRW: { symbol: '₩', name: '韓元', rate: 0.024 },
+  TWD: { symbol: 'NT$', name: '台幣', rate: 1, decimals: 0 },
+  JPY: { symbol: '¥', name: '日圓', rate: 0.21, decimals: 0 },
+  USD: { symbol: '$', name: '美金', rate: 32.5, decimals: 2 },
+  EUR: { symbol: '€', name: '歐元', rate: 35.2, decimals: 2 },
+  HKD: { symbol: 'HK$', name: '港幣', rate: 4.15, decimals: 2 },
+  CNY: { symbol: '¥', name: '人民幣', rate: 4.45, decimals: 2 },
+  KRW: { symbol: '₩', name: '韓元', rate: 0.024, decimals: 0 },
 };
 
 let users = [];
@@ -431,10 +431,11 @@ function toBaseAmount(twd) {
   return baseCurrency === 'TWD' ? twd : twd / CURRENCIES[baseCurrency].rate;
 }
 function fmtBaseAmount(twd) {
-  return CURRENCIES[baseCurrency].symbol + Math.round(toBaseAmount(twd)).toLocaleString();
+  return fmtInBase(toBaseAmount(twd));
 }
 function fmtInBase(val) {
-  return CURRENCIES[baseCurrency].symbol + Math.round(val).toLocaleString();
+  const dec = CURRENCIES[baseCurrency].decimals;
+  return CURRENCIES[baseCurrency].symbol + val.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
 // Convert an expense's own "paid" amount into baseCurrency. When the expense was
