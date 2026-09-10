@@ -1051,7 +1051,7 @@ function renderSettlement() {
             <svg width="16" height="16" fill="none" stroke="#f59e0b" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             <span class="font-bold text-sm text-slate-700">${s.to}</span>
             <div class="ml-auto flex items-center gap-2 flex-wrap justify-end">
-              <span class="font-black text-amber-600 text-sm">${fmtBaseAmount(s.amount)}</span>
+              <span class="font-black text-amber-600 text-sm">${fmtInBase(s.amountBase)}</span>
               ${showTWD ? `<span class="font-black text-amber-600 text-sm">NT$ ${Math.round(s.amount).toLocaleString()}</span>` : ''}
             </div>
           </div>
@@ -1062,14 +1062,26 @@ function renderSettlement() {
 }
 
 function calcSettlements(summary) {
-  const debtors = summary.filter(s => s.balance < -1).map(s => ({ name: s.user.name, amount: -s.balance }));
-  const creditors = summary.filter(s => s.balance > 1).map(s => ({ name: s.user.name, amount: s.balance }));
+  // amount tracks the authoritative TWD debt/credit (real money to move).
+  // amountBase tracks the same person's balanceBase and is reduced in the same
+  // proportion as amount at every step, so each settlement's amountBase always
+  // sums back exactly to that person's balanceBase shown on their card — instead
+  // of re-deriving it from a generic exchange rate, which can drift from the
+  // per-transaction rates actually used and make the numbers not add up.
+  const debtors = summary.filter(s => s.balance < -1).map(s => ({ name: s.user.name, amount: -s.balance, amountBase: -s.balanceBase }));
+  const creditors = summary.filter(s => s.balance > 1).map(s => ({ name: s.user.name, amount: s.balance, amountBase: s.balanceBase }));
   const settlements = [];
-  
+
   let i = 0, j = 0;
   while (i < debtors.length && j < creditors.length) {
     const pay = Math.min(debtors[i].amount, creditors[j].amount);
-    if (pay > 1) settlements.push({ from: debtors[i].name, to: creditors[j].name, amount: pay });
+    if (pay > 1) {
+      const ratio = debtors[i].amount > 0 ? pay / debtors[i].amount : 0;
+      const payBase = debtors[i].amountBase * ratio;
+      settlements.push({ from: debtors[i].name, to: creditors[j].name, amount: pay, amountBase: payBase });
+      debtors[i].amountBase -= payBase;
+      creditors[j].amountBase -= payBase;
+    }
     debtors[i].amount -= pay;
     creditors[j].amount -= pay;
     if (debtors[i].amount < 1) i++;
