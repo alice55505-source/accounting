@@ -126,7 +126,7 @@
       <div class="grid grid-cols-2 gap-3">
         <div class="space-y-1">
           <label class="text-[10px] font-bold text-slate-400 ml-1">幣別</label>
-          <select id="expCurrency" onchange="onCurrencyChange()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold">
+          <select id="expCurrency" onchange="onExpCurrencySelected()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold">
             <option value="TWD">🇹🇼 台幣 NT$</option>
             <option value="JPY">🇯🇵 日圓 ¥</option>
             <option value="USD">🇺🇸 美金 $</option>
@@ -312,7 +312,7 @@
         </div>
         <div class="col-span-1 sm:col-span-3 space-y-1">
           <label class="text-[10px] font-bold text-slate-400 ml-1">幣別</label>
-          <select id="depositCurrency" onchange="onDepositCurrencyChange()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold">
+          <select id="depositCurrency" onchange="onDepositCurrencySelected()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold">
             <option value="TWD">🇹🇼 台幣 NT$</option>
             <option value="JPY">🇯🇵 日圓 ¥</option>
             <option value="USD">🇺🇸 美金 $</option>
@@ -439,9 +439,11 @@ function onBaseCurrencyChange() {
   saveData();
   if (!editingId) {
     document.getElementById('expCurrency').value = baseCurrency;
+    document.getElementById('expRate').value = '';
     onCurrencyChange();
   }
   document.getElementById('depositCurrency').value = baseCurrency;
+  document.getElementById('depositRate').value = '';
   onDepositCurrencyChange();
   renderDashboard();
 }
@@ -535,9 +537,13 @@ function setTaxMode(mode) {
 
 function onCurrencyChange() {
   const cur = document.getElementById('expCurrency').value;
-  document.getElementById('expRate').value = CURRENCIES[cur].rate;
   document.getElementById('rateField').classList.toggle('hidden', cur === 'TWD');
   updateTotalPreview();
+}
+
+function onExpCurrencySelected() {
+  document.getElementById('expRate').value = '';
+  onCurrencyChange();
 }
 
 function updateTotalPreview() {
@@ -607,7 +613,7 @@ function calcSubtotalOnly() {
 
 function calcTotal() {
   const cur  = document.getElementById('expCurrency').value;
-  const rate = cur === 'TWD' ? 1 : (parseFloat(document.getElementById('expRate').value) || CURRENCIES[cur].rate);
+  const rate = cur === 'TWD' ? 1 : (parseFloat(document.getElementById('expRate').value) || 0);
   const subtotal = calcSubtotalOnly();
 
   const actualTWD = payMethod === 'Credit Card' ? (parseFloat(document.getElementById('expActualTWD').value) || 0) : 0;
@@ -670,7 +676,7 @@ function renderManualSplitFields() {
     return `
       <div class="flex items-center gap-2">
         <span class="text-xs font-bold text-slate-600 w-16 truncate">${user.name}</span>
-        <input type="number" id="manual_${uid}" placeholder="${perPerson}" value="${perPerson}"
+        <input type="number" id="manual_${uid}" placeholder="${perPerson}" value=""
           class="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold"
           oninput="updateManualTotal()">
         <span class="text-xs text-slate-400 font-bold">${unitLabel}</span>
@@ -708,6 +714,7 @@ function resetForm() {
   document.getElementById('expTip').value = '0';
   document.getElementById('expActualTWD').value = '';
   document.getElementById('expCurrency').value = baseCurrency;
+  document.getElementById('expRate').value = '';
   document.getElementById('cancelEditBtn').classList.add('hidden');
   document.getElementById('submitBtnText').textContent = '新增支出';
   setEntryMode('quick');
@@ -784,7 +791,8 @@ function submitExpense() {
   if (selectedSplitUsers.size === 0) return alert('請選擇分攤成員！');
 
   const cur = document.getElementById('expCurrency').value;
-  const rate = cur === 'TWD' ? 1 : (parseFloat(document.getElementById('expRate').value) || CURRENCIES[cur].rate);
+  const rate = cur === 'TWD' ? 1 : (parseFloat(document.getElementById('expRate').value) || 0);
+  if (cur !== 'TWD' && rate <= 0) return alert('請輸入匯率！');
   const totalTWD = calcTotal();
 
   // Build splitAmounts
@@ -1218,20 +1226,26 @@ function removeUser(id) {
 
 function onDepositCurrencyChange() {
   const cur = document.getElementById('depositCurrency').value;
-  document.getElementById('depositRate').value = CURRENCIES[cur].rate;
   document.getElementById('depositRateField').classList.toggle('hidden', cur === 'TWD');
+}
+
+function onDepositCurrencySelected() {
+  document.getElementById('depositRate').value = '';
+  onDepositCurrencyChange();
 }
 
 function addDeposit() {
   const userId = document.getElementById('depositUser').value;
   const cur = document.getElementById('depositCurrency').value;
-  const rate = cur === 'TWD' ? 1 : (parseFloat(document.getElementById('depositRate').value) || CURRENCIES[cur].rate);
+  const rate = cur === 'TWD' ? 1 : (parseFloat(document.getElementById('depositRate').value) || 0);
+  if (cur !== 'TWD' && rate <= 0) return alert('請輸入匯率！');
   const amount = parseFloat(document.getElementById('depositAmount').value);
   if (!amount || amount <= 0) return alert('請輸入金額！');
   const amountTWD = cur === 'TWD' ? amount : amount * rate;
   deposits.push({ id: genId(), userId, currency: cur, exchangeRate: rate, amount, amountTWD, date: new Date().toISOString() });
   document.getElementById('depositAmount').value = '';
   document.getElementById('depositCurrency').value = baseCurrency;
+  document.getElementById('depositRate').value = '';
   onDepositCurrencyChange();
   saveData();
   renderDepositList();
